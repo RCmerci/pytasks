@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-
 import Queue
-import time
+import time as _time
 import threading
-
+import functools
 
 worker_list = None
 tasksq = Queue.Queue()
@@ -28,8 +27,6 @@ def worker():
         task_callable = tasksq.get()
         task_callable()
         tasksq.task_done()
-
-    pass
 
 
 current_user = ''
@@ -90,14 +87,21 @@ class Task(object):
     }
     Schedule_num = [0, 1]
     TaskNum = 0
-    def __init__(self, func_list, schedule=None, interval=None):
+    Status = {
+        'ongoing':0,
+        'pending':1,
+        'done':2
+    }
+    def __init__(self, func_list, schedule=None, interval=None, time=1):
         self.func_list = func_list
+        self.time = time
         self.schedule = Schedule['default']
         if schedule in Schedule_num and interval:
             self.schedule = Schedule[schedule]
             self.interval = int(interval)
         Task.TaskNum += 1
         self.tasknum = Task.TaskNum
+        self.status = Status['pending']
     def add_to_tail(self, *func_list):
         """把func_list加到self.func_list 尾
         self.func_list是一个task的函数list"""
@@ -109,17 +113,38 @@ class Task(object):
 
         self.func_list = filter(_del, func_list)
     def __call__(self):
-        while self.schedule:
+        self.status = Status['ongoing']
+        @self._gen_schedule_func()
+        def _call():
             for func in self.func_list:
                 func()
-            time.sleep(self.interval)
+        _call()
+        self.status = Status['done']
     def __repr__(self):
         return '<Task %s>'%(self.tasknum)
     __str__ = __repr__
     def __del__(self):
         Task.TaskNum -= 1
-
-
+    def _gen_schedule_func(self):
+        if self.schedule and self.interval:
+            schedule = self.schedule
+            interval = self.interval
+            def schedule_func(func):
+                @functools.wraps(func)
+                def wraped_func(*args, **kargs):
+                    times = self.time
+                    while times:
+                        func(*args, **kargs)
+                        time.sleep(interval)
+                        times -= 1
+                return wraped_func
+        else:
+            def schedule_func(func):
+                @functools.wraps(func)
+                def wraped_func(*args. **kargs):
+                    func(*args, **kargs)
+                return wraped_func
+        return schedule_func
 if __name__ == '__main__':
     start()
 
