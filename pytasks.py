@@ -7,6 +7,9 @@ import functools
 import heapq
 import datetime
 import copy
+
+from util import Infinite, sleep_before_run
+
 if __debug__:
     from sys import getrefcount
 
@@ -34,7 +37,20 @@ class PollList(list):
     def clear_all(self):
         self.__init__()
     def min(self):
-        return self.__getitem__(0)
+        try:
+            return self.__getitem__(0)
+        except:
+            return None
+    def max(self):
+        try:
+            return heapq.nlargest(1, self)[0]
+        except:
+            return None
+    def __contains__(self, v):
+        for i in self:
+            if i == v:
+                return True
+        return False
 worker_list = None
 tasksq = Queue.Queue()
 poll_list = None
@@ -68,28 +84,32 @@ def worker():
 def poll_func():
     global poll_list
     temp_poll_list = PollList()
+    def polling(tc, should_run, runtime):
+        if should_run == False and runtime == Infinite:
+            pass
+        elif should_run == True and runtime <= datetime.timedelta(0):
+            temp_poll_list.push(tc)
+            tasksq.put(tc)
+        elif should_run == False and runtime < Infinite:
+            temp_poll_list.push(tc)
+        elif should_run == True and\
+             (runtime > datetime.timedelta(0) and\
+              Infinite > runtime):
+            temp_poll_list.push(tc)
     while 1:
         while not poll_list.is_empty():
             tc = poll_list.pop()
-            should_run = tc.should_run()
-            alive = tc.alive
-            if should_run == True and alive:
-                temp_poll_list.push(tc)
-                tasksq.put(tc)
-            elif not should_run == True and alive:
-                temp_poll_list.push(tc)
-            elif should_run == True and not alive:
-                tasksq.put(tc)
-            elif not should_run == True and not alive:
-                pass
+            should_run, runtime = tc.should_run()
+            polling(tc, should_run, runtime)
 
         poll_list = copy.copy(temp_poll_list)
         temp_poll_list.clear_all()
         try:
-            sleep_time = poll_list.min().nexttime_in_sec
-            _time.sleep(sleep_time if sleep_time>0.5 else 0.5)
+            sleep_time = max(poll_list.min().nexttime_in_sec, 0.5)
         except:
-            _time.sleep(0.5)
+            sleep_time = 0.5
+        finally:
+            _time.sleep(sleep_time)
 
 
 current_user = ''
@@ -111,7 +131,7 @@ def put_init_tasks(queue_instance):
             import importlib
             import tasks as init_task_file  # tasks.py
             if __debug__:
-                print dir(init_task_file)
+                print filter(lambda e:not e.startswith('_'), dir(init_task_file))
         except ImportError:
             print 'no init-task-file found'
             init_task_file = None
@@ -149,7 +169,7 @@ class Interaction(object):
         print 'task    status  alive times nexttime'
         temp_task_list = []
         for task in self.task_list:
-            print task, task.get_status(), task.alive, task.times, task.nexttime
+            print task, task.get_status(), '  ', task.alive, '  ', task.times, ' ', task.nexttime
             if not task.is_done():
                 temp_task_list.append(task)
         self.task_list = temp_task_list
@@ -165,7 +185,7 @@ class Interaction(object):
         while 1:
             input = raw_input('>')
             input = input.strip(' ,=_-|')
-            getattr(self, input, 'NoneFunc')()
+            getattr(self, input, self.NoneFunc)()
 
 class Task(object):
     TaskNum = 0
@@ -199,6 +219,7 @@ class Task(object):
         self._alive = True
         self._totaltime = self.times
         self._succ_fail_stat = 0
+        self.should_run = self._should_run(self.should_run)  # add decorator on function should_run
     def add_to_tail(self, *func_list):
         """把func_list加到self.func_list 尾
         self.func_list是一个task的函数list"""
@@ -238,26 +259,55 @@ class Task(object):
     def nexttime_in_sec(self):
         return self.nexttime.total_seconds()
     def should_run(self):
+        """return (should_run,runtime)
+        在runtime之后，run or not (true|false)
+        """
         try:
             result = self.schedule()
         except:
             self.times = 0
-            return False
+            self.status = Task.Status['done']
+            return False, Infinite
         if result == True and self.alive:
             self.nexttime = self._every
-            return True
+            return True, datetime.timedelta(0)
         if result <= datetime.datetime.now() and self.alive:
             self.nexttime = self._every
-            return True
-        if result > datetime.datetime.now():
+            return True, datetime.timedelta(0)
+        if result > datetime.datetime.now() and self.alive:
             self.nexttime = result - datetime.datetime.now()
-            return False
+            return True, self.nexttime
         if result == False and self.alive:
             self.nexttime = self._every
-            return False
+            return False, self.nexttime
         else:
             self.times = 0
-            return False
+            self.status = Task.Status['done']
+            return False, Infinite
+    def _should_run(self, should_run):
+        self._last_should_run = None
+        self._last_runtime = None
+        self._last_schedule_time = None
+        self._last_times = copy.copy(self.times)
+        @functools.wraps(should_run)
+        def wrapped_func(*args, **kwargs):
+            if self._last_should_run == True and \
+               self._last_runtime > datetime.timedelta(0) and\
+               self._last_times == self.times:
+                interval = datetime.datetime.now() - self._last_schedule_time
+                runtime = self._last_runtime - interval
+                if runtime > datetime.timedelta(0):
+                    self.nexttime = runtime
+                else:
+                    self.nexttime = self._every
+                return (True, runtime)
+            _should_run, _runtime = should_run(*args, **kwargs)
+            self._last_should_run = _should_run
+            self._last_runtime = _runtime
+            self._last_schedule_time = datetime.datetime.now()
+            self._last_times = copy.copy(self.times)
+            return (_should_run, _runtime)
+        return wrapped_func
     @property
     def alive(self):
         """this task is alive or not"""
@@ -273,5 +323,9 @@ class Task(object):
     @property
     def success_time(self):
         return self._succ_fail_stat
+    def __eq__(self, v):
+        if isinstance(v, Task) and self.tasknum == v.tasknum:
+            return True
+        return False
 if __name__ == '__main__':
     start()
