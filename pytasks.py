@@ -115,8 +115,6 @@ def poll_func():
 current_user = ''
 init_task_file = None
 def put_init_tasks(queue_instance):
-    if __debug__:
-        print 'in put_init_tasks'
     global init_task_file
     global current_user
     if not current_user:
@@ -146,11 +144,7 @@ def put_init_tasks(queue_instance):
         if 'function' in str(type(f)):
             return True
         return False
-    if __debug__:
-        print func_list
     func_list = filter(is_func_or_callable, func_list)
-    if __debug__:
-        print func_list
     task_list = []
     for func in func_list:
         func_chain = [func]
@@ -268,22 +262,24 @@ class Task(object):
             self.times = 0
             self.status = Task.Status['done']
             return False, Infinite
-        if result == True and self.alive:
-            self.nexttime = self._every
-            return True, datetime.timedelta(0)
-        if result <= datetime.datetime.now() and self.alive:
-            self.nexttime = self._every
-            return True, datetime.timedelta(0)
-        if result > datetime.datetime.now() and self.alive:
-            self.nexttime = result - datetime.datetime.now()
-            return True, self.nexttime
-        if result == False and self.alive:
-            self.nexttime = self._every
-            return False, self.nexttime
-        else:
+        if not self.alive:
             self.times = 0
             self.status = Task.Status['done']
             return False, Infinite
+        if result == True: #and self.alive:
+            self.nexttime = self._every
+            return True, datetime.timedelta(0)
+        if result == False: #and self.alive:
+            self.nexttime = self._every
+            return False, self.nexttime
+        if result <= datetime.datetime.now(): #and self.alive:
+            self.nexttime = self._every
+            return True, datetime.timedelta(0)
+        if result > datetime.datetime.now(): #and self.alive:
+            self.nexttime = result - datetime.datetime.now()
+            return True, self.nexttime
+        else:
+            print 'error'
     def _should_run(self, should_run):
         self._last_should_run = None
         self._last_runtime = None
