@@ -9,14 +9,15 @@ def _now():
     return _datetime.now()
 
 def task1():
-    print 1111
+    print 'task1'
 
 def task2():
-    print 2222
+    print 'task2'
 
 def _sche():
     yield _add(_now(),5)
     yield _add(_now(),9)
+    yield True
     raise Exception
 _schedule1 = _sche().next
 
