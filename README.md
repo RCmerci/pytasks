@@ -1,34 +1,9 @@
 #pytasks
 用于执行`例行任务`
-
-###Example-1
-
+###INSTALL
 ```
-    #tasks.py是用于test的py文件
-    % python pytasks.py
+    pip install pytasks
 ```
-
-###Example-2
-*
-```
-    % vim tasks.py
-```
-*
-```
-        #tasks.py   ----do task at 2014-12-12 12:12:00
-
-    from datetime import datetime as _date
-    def task():
-        ##do-something
-        print 'done-work'
-    task.schedule = lambda:_date(2014,12,12,12,12)
-```
-*
-```
-    %python pytasks.py
-```
-*
-done
 ### Example-3
 ```
     #test.py
@@ -37,16 +12,18 @@ done
     from datetime import timedelta as td
     class T:
         def __init__(self):
-            self.times = 10
+            self.times = 10    #<--------------task 最多执行次数
             self.now = dt.now()
-        def __call__(self):
+            self.every = td(seconds=4)  #<------task被轮询的频率
+        def __call__(self):    #<--------------task执行的具体内容
             print dt.now()-self.now
             self.now =dt.now()
-        def schedule(self):
-            return dt.now()+td(seconds=2)
-    task = T()
+        def schedule(self):    #<--------------task的执行计划：
+            return dt.now()+td(seconds=2)         #可返回bool()或datetime.datetime(...)[代表具体执行时刻]
+    task = T()                                    #返回bool()时，按self.every频率轮询
 
     app = App()
     app.add(task)
     app.run()
 ```
+`BSD license`
