@@ -3,6 +3,10 @@
 
 
 class _Infinite(object):
+    def __init__(self):
+        self._v = 0
+    def __eq__(self, v):
+        return self._v == v._v
     def __cmp__(self, v):
         if isinstance(v, _Infinite):
             return 0
@@ -17,6 +21,7 @@ class _Infinite(object):
         return '<infinite>'
     __str__ = __repr__
     def __sub__(self, v):
+        self._v += 1
         return self
     __add__ = __sub__
     __mul__ = __sub__
