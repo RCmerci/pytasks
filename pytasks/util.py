@@ -4,7 +4,7 @@
 
 class _Infinite(object):
     def __init__(self):
-        self._v = 0
+        self._v = 7
     def __eq__(self, v):
         return self._v == v._v
     def __cmp__(self, v):
@@ -20,8 +20,12 @@ class _Infinite(object):
     def __repr__(self):
         return '<infinite>'
     __str__ = __repr__
+    def _oper(op):
+        def wrapped_func(self, v):
+            self._v = getattr(self._v, op)(v)
+            return self
+        return wrapped_func
     def __sub__(self, v):
-        self._v += 1
         return self
     __add__ = __sub__
     __mul__ = __sub__
@@ -32,11 +36,11 @@ class _Infinite(object):
     __rmul__ = __sub__
     __rdiv__ = __sub__
     __rfloordiv__ = __sub__
-    __iadd__ = __sub__
-    __isub__ = __sub__
-    __imul__ = __sub__
-    __idiv__ = __sub__
-    __ifloordiv__ = __sub__
+    __iadd__ = _oper('__add__')
+    __isub__ = _oper('__sub__')
+    __imul__ = _oper('__mul__')
+    __idiv__ = _oper('__div__')
+    __ifloordiv__ = _oper('__floordiv__')
 
 Infinite = _Infinite()
 

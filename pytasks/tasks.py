@@ -12,7 +12,7 @@ def _now():
 def task1():
     print 'task1'
 
-def _task2():
+def task2():
     print 'task2'
 
 def _sche():
@@ -25,8 +25,8 @@ _schedule1 = _sche().next
 def _schedule2():
     return _datetime.now()+_timedelta(seconds=2)
 task1.schedule = _schedule2
-_task2.schedule = _schedule2
+task2.schedule = _schedule1
 task1.times = _infinite
-_task2.times = 3
+task2.times = 3
 #task1.every = _timedelta(seconds=1)
-_task2.every = _timedelta(seconds=2) 
+task2.every = _timedelta(seconds=2) 
