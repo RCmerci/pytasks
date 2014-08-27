@@ -4,7 +4,7 @@
 ```
     pip install pytasks
 ```
-### Example-3
+### Example
 ```
     #test.py
     from pytasks import App
