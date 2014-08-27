@@ -9,7 +9,9 @@ import datetime
 import copy
 
 from util import Infinite, sleep_before_run
-
+__all__ = [
+    'App',
+]
 
 current_user = ''
 init_task_file = None
