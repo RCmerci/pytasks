@@ -10,8 +10,9 @@ import copy
 
 from util import Infinite, sleep_before_run
 
-if __debug__:
-    from sys import getrefcount
+
+current_user = ''
+init_task_file = None
 
 class WorkerList(list):
     def __init__(self, *args, **kargs):
@@ -51,9 +52,11 @@ class PollList(list):
             if i == v:
                 return True
         return False
-worker_list = None
+
+worker_list = WorkerList()
 tasksq = Queue.Queue()
-poll_list = None
+poll_list = PollList()
+
 def start(threadnum=5):
     global poll_list
     if not poll_list:
@@ -74,15 +77,19 @@ def start(threadnum=5):
     inter = Interaction(task_list)
     inter()
 
-
-def worker():
-    # print 'in func [worker]'
+def worker(_tasksq=None):
+    if not _tasksq:
+        global tasksq
+    else:
+        tasksq = _tasksq
     while 1:
         task_callable = tasksq.get()
         task_callable()
         tasksq.task_done()
-def poll_func():
-    global poll_list
+def poll_func(poll_l=None):
+    if not poll_l:
+        global poll_list
+        poll_l = poll_list
     temp_poll_list = PollList()
     def polling(tc, should_run, runtime):
         if should_run == False and runtime == Infinite:
@@ -97,26 +104,26 @@ def poll_func():
               Infinite > runtime):
             temp_poll_list.push(tc)
     while 1:
-        while not poll_list.is_empty():
-            tc = poll_list.pop()
+        while not poll_l.is_empty():
+            tc = poll_l.pop()
             should_run, runtime = tc.should_run()
             polling(tc, should_run, runtime)
 
-        poll_list = copy.copy(temp_poll_list)
+        poll_l = copy.copy(temp_poll_list)
         temp_poll_list.clear_all()
         try:
-            sleep_time = max(poll_list.min().nexttime_in_sec, 0.5)
+            sleep_time = max(poll_l.min().nexttime_in_sec, 0)
         except:
             sleep_time = 0.5
         finally:
             _time.sleep(sleep_time)
 
-
-current_user = ''
-init_task_file = None
-def put_init_tasks(queue_instance):
-    global init_task_file
-    global current_user
+def put_init_tasks(poll_list, _init_task_file=None, current_user=None):
+    """初始化 poll_list"""
+    if not _init_task_file:
+        global init_task_file
+    else:
+        init_task_file = _init_task_file
     if not current_user:
         import os, sys
         current_user = os.getenv("LOGNAME")
@@ -131,9 +138,8 @@ def put_init_tasks(queue_instance):
             if __debug__:
                 print filter(lambda e:not e.startswith('_'), dir(init_task_file))
         except ImportError:
-            print 'no init-task-file found'
-            init_task_file = None
-            return []
+            print "not found init task file"
+            return
     ########### 以上：得到inittasks
     def not_start_with_(f, il):
         return not f.startswith(il)
@@ -149,7 +155,7 @@ def put_init_tasks(queue_instance):
     for func in func_list:
         func_chain = [func]
         t = Task(func_chain)
-        queue_instance.push(t)
+        poll_list.push(t)
         task_list.append(t)
     return task_list
 
@@ -259,27 +265,39 @@ class Task(object):
         try:
             result = self.schedule()
         except:
+            # case 1
             self.times = 0
             self.status = Task.Status['done']
             return False, Infinite
         if not self.alive:
+            # case 2
             self.times = 0
             self.status = Task.Status['done']
             return False, Infinite
         if result == True: #and self.alive:
+            # case 3
             self.nexttime = self._every
             return True, datetime.timedelta(0)
         if result == False: #and self.alive:
+            # case 4
             self.nexttime = self._every
             return False, self.nexttime
         if result <= datetime.datetime.now(): #and self.alive:
-            self.nexttime = self._every
+            # case 5
+            # self.nexttime != self._every
+            # 这里的nexttime应该为 small_interval()
+            # 如果不是的话以下情况会不符合要求：
+            # self.every > 两次schedule()之差 这里不考虑schedule()返回 bool()
+            if __debug__: print 'here'
+            self.nexttime = datetime.timedelta(seconds=0.1)
             return True, datetime.timedelta(0)
         if result > datetime.datetime.now(): #and self.alive:
+            # case 6
             self.nexttime = result - datetime.datetime.now()
             return True, self.nexttime
         else:
-            print 'error'
+            # case 7
+            raise ScheduleError
     def _should_run(self, should_run):
         self._last_should_run = None
         self._last_runtime = None
@@ -295,7 +313,10 @@ class Task(object):
                 if runtime > datetime.timedelta(0):
                     self.nexttime = runtime
                 else:
-                    self.nexttime = self._every
+                    # self.nexttime = self._every
+                    # 理由同self.should_run 的case 5
+                    self.nexttime = datetime.timedelta(seconds=0.01)
+
                 return (True, runtime)
             _should_run, _runtime = should_run(*args, **kwargs)
             self._last_should_run = _should_run
@@ -323,5 +344,51 @@ class Task(object):
         if isinstance(v, Task) and self.tasknum == v.tasknum:
             return True
         return False
+class App(object):
+    def __init__(self, init_task_file=None, threadnum=5):
+        self.worker_list = WorkerList()
+        self.poll_list = PollList()
+        self.tasksq = Queue.Queue()
+        self.threadnum = threadnum
+        if init_task_file:
+            _unused = put_init_tasks(self.poll_list, init_task_file)
+        self.poll_t = App._init_data_structure(self.poll_list, self.tasksq, self.worker_list, self.threadnum)  # poll_t : polling thread
+    @staticmethod
+    def _init_data_structure(poll_list, tasksq, worker_list, threadnum):
+        """
+        初始化 poll_list ---> poll_func所轮询的对象
+               tasksq -----> worker 线程工作对象
+               worker_list --> workers list
+        """
+        # if not poll_list:
+        #     poll_list = PollList()
+        #     task_list = put_init_tasks(poll_list)
+        # if not worker_list:
+        #     worker_list = WorkerList()
+        for i in range(threadnum):
+            t = threading.Thread(target=worker, args=(tasksq, ))
+            t.setDaemon(True)
+            # t.start()
+            worker_list.append(t)
+        poll_t = threading.Thread(target=poll_func, args=(poll_list, ))
+        # poll_t.setDaemon(True)
+        # poll_t.start()
+        return  poll_t
+    def _start_threads(self):
+        for t in self.worker_list:
+            t.start()
+        self.poll_t.start()
+    def add(self, task_callable):
+        self.poll_list.push(Task([task_callable]))
+    def run(self):
+        self._start_threads()
+        self.poll_t.join()
+
+
+class NotFoundInitFile(Exception):
+    __str__ = lambda:"can't find the initial file"
+class ScheduleError(Exception):
+    __str__ = lambda:"task.schedule return wrong value"
+
 if __name__ == '__main__':
     start()

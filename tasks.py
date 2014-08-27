@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #import pdb
 from time import sleep as _sleep
 from datetime import datetime as _datetime
@@ -11,7 +12,7 @@ def _now():
 def task1():
     print 'task1'
 
-def task2():
+def _task2():
     print 'task2'
 
 def _sche():
@@ -22,10 +23,10 @@ def _sche():
 _schedule1 = _sche().next
 
 def _schedule2():
-    return _datetime.now()
-task1.schedule = _schedule1
-task2.schedule = _schedule2
+    return _datetime.now()+_timedelta(seconds=2)
+task1.schedule = _schedule2
+_task2.schedule = _schedule2
 task1.times = 10
-task2.times = 3
-task1.every = _timedelta(seconds=1)
-task2.every = _timedelta(seconds=2)
+_task2.times = 3
+#task1.every = _timedelta(seconds=1)
+_task2.every = _timedelta(seconds=2) 
