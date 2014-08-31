@@ -98,6 +98,7 @@ def poll_func(poll_l=None):
             pass
         elif should_run == True and runtime <= datetime.timedelta(0):
             temp_poll_list.push(tc)
+            # print 'put task'
             tasksq.put(tc)
         elif should_run == False and runtime < Infinite:
             temp_poll_list.push(tc)
@@ -235,13 +236,13 @@ class Task(object):
     def __call__(self):
         self.status = Task.Status['ongoing']
         for func in self.func_list:
+            self.times -= 1
             try:
                 func()
                 self._succ_fail_stat += Task.Status['success']
             except:
                 self._succ_fail_stat += Task.Status['fail']
             finally:
-                self.times -= 1
                 if not self.alive:
                     self.status = Task.Status['done']
                 self.lasttime = datetime.datetime.now()
@@ -267,38 +268,37 @@ class Task(object):
         try:
             result = self.schedule()
         except:
-            # case 1
+            # print 'case 1'
             self.times = 0
             self.status = Task.Status['done']
             return False, Infinite
         if not self.alive:
-            # case 2
+            # print 'case 2'
             self.times = 0
             self.status = Task.Status['done']
             return False, Infinite
         if result == True: #and self.alive:
-            # case 3
+            # print 'case 3'
             self.nexttime = self._every
             return True, datetime.timedelta(0)
         if result == False: #and self.alive:
-            # case 4
+            # print 'case 4'
             self.nexttime = self._every
             return False, self.nexttime
         if result <= datetime.datetime.now(): #and self.alive:
-            # case 5
+            # print 'case 5'
             # self.nexttime != self._every
             # 这里的nexttime应该为 small_interval()
             # 如果不是的话以下情况会不符合要求：
             # self.every > 两次schedule()之差 这里不考虑schedule()返回 bool()
-            if __debug__: print 'here'
             self.nexttime = datetime.timedelta(seconds=0.1)
             return True, datetime.timedelta(0)
         if result > datetime.datetime.now(): #and self.alive:
-            # case 6
+            # print 'case 6'
             self.nexttime = result - datetime.datetime.now()
             return True, self.nexttime
         else:
-            # case 7
+            # print 'case 7'
             raise ScheduleError
     def _should_run(self, should_run):
         self._last_should_run = None
@@ -313,8 +313,10 @@ class Task(object):
                 interval = datetime.datetime.now() - self._last_schedule_time
                 runtime = self._last_runtime - interval
                 if runtime > datetime.timedelta(0):
+                    # print '1'
                     self.nexttime = runtime
                 else:
+                    # print '2'
                     # self.nexttime = self._every
                     # 理由同self.should_run 的case 5
                     self.nexttime = datetime.timedelta(seconds=0.01)

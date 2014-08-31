@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
     name="pytasks",
-    version="1.1",
+    version="1.2",
     packages=["pytasks",],
     license="BSD",
     author="rcmerci",
